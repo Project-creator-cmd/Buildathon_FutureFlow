@@ -21,11 +21,24 @@ const Login = () => {
     setShowConfirm(false);
 
     try {
+      console.log('Attempting login with:', formData.email);
       const { data } = await axios.post('/api/auth/login', formData);
-      login(data, data.token);
+      console.log('Login response:', data);
+      
+      // Store user data without token
+      const userData = {
+        _id: data._id,
+        name: data.name,
+        email: data.email,
+        role: data.role
+      };
+      
+      login(userData, data.token);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      console.error('Login error:', err);
+      console.error('Error response:', err.response?.data);
+      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
     }
   };
 

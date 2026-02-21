@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const careerSchema = new mongoose.Schema({
   // New structure matching your requirements
-  stream: { type: String, required: true },
+  stream: { type: String },
   root_path: { type: String },
   after_10th: { type: String },
   entrance_exams: [{ type: String }],

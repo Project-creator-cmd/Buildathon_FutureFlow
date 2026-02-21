@@ -40,17 +40,62 @@ exports.getAllCareers = async (req, res) => {
 
 exports.getCareerById = async (req, res) => {
   try {
-    const career = await Career.findById(req.params.id).lean();
+    console.log('=== GET CAREER BY ID ===');
+    console.log('Requested ID:', req.params.id);
+    console.log('ID type:', typeof req.params.id);
+    
+    // Check if ID is valid MongoDB ObjectId
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      console.log('Invalid ObjectId format');
+      return res.status(400).json({ message: 'Invalid career ID format' });
+    }
 
+    // First, check if any careers exist
+    const totalCareers = await Career.countDocuments();
+    console.log('Total careers in database:', totalCareers);
+
+    let career = await Career.findById(req.params.id)
+      .populate('requiredStream', 'name')
+      .populate('requiredExams', 'name fullName')
+      .populate('requiredDegrees', 'name duration')
+      .populate('coreSkills', 'name')
+      .populate('jobRoles.entry jobRoles.mid jobRoles.senior', 'title salaryRange experience')
+      .lean();
+
+    console.log('Career found:', career ? 'YES' : 'NO');
+    
     if (!career) {
+      console.log('Career not found with ID:', req.params.id);
       return res.status(404).json({ message: 'Career not found' });
     }
 
-    console.log('Fetched career:', career.name || career.career_options?.[0]);
-    res.json(career);
+    console.log('Career data:', JSON.stringify(career, null, 2));
+
+    // Transform new structure to old structure for frontend compatibility
+    const transformedCareer = {
+      _id: career._id,
+      name: career.name || career.career_options?.[0] || 'Career Path',
+      stream: career.stream || career.requiredStream?.name || 'N/A',
+      after_10th: career.after_10th || 'Complete 10th standard and choose appropriate stream',
+      entrance_exams: career.entrance_exams || career.requiredExams?.map(e => e.fullName || e.name) || [],
+      degree_options: career.degree_options || career.requiredDegrees?.map(d => `${d.name} (${d.duration})`) || [],
+      skills_required: career.skills_required || career.coreSkills?.map(s => s.name) || [],
+      career_options: career.career_options || [career.name] || [],
+      alternative_paths: career.alternative_paths || career.alternativePaths || [],
+      description: career.description || career.root_path || '',
+      certifications: career.certifications || [],
+      internshipDuration: career.internshipDuration || 'Varies',
+      jobRoles: career.jobRoles || {},
+      minMarks: career.minMarks || 50,
+      category: career.category || 'General'
+    };
+
+    console.log('Transformed career:', transformedCareer.name);
+    res.json(transformedCareer);
   } catch (error) {
     console.error('Error fetching career by ID:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: error.message, error: error.toString() });
   }
 };
 
@@ -200,6 +245,115 @@ exports.getHighDemandCareers = async (req, res) => {
 
     res.json(filteredCareers);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get personalized career details based on user profile
+exports.getPersonalizedCareerById = async (req, res) => {
+  try {
+    console.log('=== GET PERSONALIZED CAREER ===');
+    console.log('Career ID:', req.params.id);
+    console.log('User ID:', req.user._id);
+
+    // Fetch career
+    let career = await Career.findById(req.params.id)
+      .populate('requiredStream', 'name')
+      .populate('requiredExams', 'name fullName')
+      .populate('requiredDegrees', 'name duration')
+      .populate('coreSkills', 'name')
+      .populate('jobRoles.entry jobRoles.mid jobRoles.senior', 'title salaryRange experience')
+      .lean();
+
+    if (!career) {
+      return res.status(404).json({ message: 'Career not found' });
+    }
+
+    // Fetch user profile
+    const profile = await Profile.findOne({ user: req.user._id });
+    
+    // Transform career data
+    const transformedCareer = {
+      _id: career._id,
+      name: career.name || career.career_options?.[0] || 'Career Path',
+      stream: career.stream || career.requiredStream?.name || 'N/A',
+      after_10th: career.after_10th || 'Complete 10th standard and choose appropriate stream',
+      entrance_exams: career.entrance_exams || career.requiredExams?.map(e => e.fullName || e.name) || [],
+      degree_options: career.degree_options || career.requiredDegrees?.map(d => `${d.name} (${d.duration})`) || [],
+      skills_required: career.skills_required || career.coreSkills?.map(s => s.name) || [],
+      career_options: career.career_options || [career.name] || [],
+      alternative_paths: career.alternative_paths || career.alternativePaths || [],
+      description: career.description || career.root_path || '',
+      certifications: career.certifications || [],
+      internshipDuration: career.internshipDuration || 'Varies',
+      jobRoles: career.jobRoles || {},
+      minMarks: career.minMarks || 50,
+      category: career.category || 'General'
+    };
+
+    // Add personalization if profile exists
+    if (profile) {
+      const personalization = {
+        eligibility: {
+          meetsMarksRequirement: profile.tenthMarks >= transformedCareer.minMarks,
+          yourMarks: profile.tenthMarks,
+          requiredMarks: transformedCareer.minMarks,
+          gap: transformedCareer.minMarks - profile.tenthMarks
+        },
+        matchingInterests: [],
+        matchingStrengths: [],
+        skillGaps: [],
+        recommendations: []
+      };
+
+      // Check interest matches
+      const careerText = `${transformedCareer.name} ${transformedCareer.category} ${transformedCareer.stream}`.toLowerCase();
+      personalization.matchingInterests = profile.interests.filter(interest =>
+        careerText.includes(interest.toLowerCase())
+      );
+
+      // Check strength matches
+      personalization.matchingStrengths = profile.strengths.filter(strength =>
+        transformedCareer.skills_required.some(skill =>
+          skill.toLowerCase().includes(strength.toLowerCase()) ||
+          strength.toLowerCase().includes(skill.toLowerCase())
+        )
+      );
+
+      // Identify skill gaps
+      personalization.skillGaps = transformedCareer.skills_required.filter(skill =>
+        !profile.strengths.some(strength =>
+          skill.toLowerCase().includes(strength.toLowerCase()) ||
+          strength.toLowerCase().includes(skill.toLowerCase())
+        )
+      );
+
+      // Generate recommendations
+      if (personalization.eligibility.meetsMarksRequirement) {
+        personalization.recommendations.push('✅ You meet the minimum marks requirement!');
+      } else {
+        personalization.recommendations.push(`📚 Focus on improving your marks by ${Math.abs(personalization.eligibility.gap)}%`);
+      }
+
+      if (personalization.matchingInterests.length > 0) {
+        personalization.recommendations.push(`🎯 Great match! This aligns with your interests in ${personalization.matchingInterests.join(', ')}`);
+      }
+
+      if (personalization.matchingStrengths.length > 0) {
+        personalization.recommendations.push(`💪 You already have relevant strengths: ${personalization.matchingStrengths.join(', ')}`);
+      }
+
+      if (personalization.skillGaps.length > 0) {
+        personalization.recommendations.push(`📖 Skills to develop: ${personalization.skillGaps.slice(0, 3).join(', ')}`);
+      }
+
+      transformedCareer.personalization = personalization;
+    }
+
+    console.log('Returning personalized career:', transformedCareer.name);
+    res.json(transformedCareer);
+  } catch (error) {
+    console.error('Error fetching personalized career:', error);
     res.status(500).json({ message: error.message });
   }
 };
