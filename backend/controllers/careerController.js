@@ -11,16 +11,8 @@ exports.getAllCareers = async (req, res) => {
       query.stream = stream;
     }
 
-    // Fetch all careers
-    const careers = await Career.find(query)
-      .populate('requiredStream')
-      .populate('requiredExams')
-      .populate('requiredDegrees')
-      .populate('coreSkills')
-      .populate('jobRoles.entry')
-      .populate('jobRoles.mid')
-      .populate('jobRoles.senior')
-      .lean();
+    // Fetch all careers without populating references
+    const careers = await Career.find(query).lean();
 
     let filteredCareers = careers;
 
@@ -38,6 +30,7 @@ exports.getAllCareers = async (req, res) => {
       });
     }
 
+    console.log(`Returning ${filteredCareers.length} careers`);
     res.json(filteredCareers);
   } catch (error) {
     console.error('Error fetching careers:', error);
@@ -47,29 +40,13 @@ exports.getAllCareers = async (req, res) => {
 
 exports.getCareerById = async (req, res) => {
   try {
-    const career = await Career.findById(req.params.id)
-      .populate('requiredStream')
-      .populate('requiredExams')
-      .populate('requiredDegrees')
-      .populate('coreSkills')
-      .populate({
-        path: 'jobRoles.entry',
-        populate: { path: 'requiredSkills' }
-      })
-      .populate({
-        path: 'jobRoles.mid',
-        populate: { path: 'requiredSkills' }
-      })
-      .populate({
-        path: 'jobRoles.senior',
-        populate: { path: 'requiredSkills' }
-      })
-      .lean();
+    const career = await Career.findById(req.params.id).lean();
 
     if (!career) {
       return res.status(404).json({ message: 'Career not found' });
     }
 
+    console.log('Fetched career:', career.name || career.career_options?.[0]);
     res.json(career);
   } catch (error) {
     console.error('Error fetching career by ID:', error);
@@ -84,14 +61,8 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
       return res.status(404).json({ message: 'Profile not found' });
     }
 
-    const careers = await Career.find()
-      .populate('requiredStream')
-      .populate('requiredDegrees')
-      .populate('coreSkills')
-      .populate('jobRoles.entry')
-      .populate('jobRoles.mid')
-      .populate('jobRoles.senior')
-      .lean();
+    // Fetch careers without populating references
+    const careers = await Career.find().lean();
 
     console.log(`Found ${careers.length} careers for personalization`);
     console.log('Profile:', { marks: profile.tenthMarks, interests: profile.interests, strengths: profile.strengths });
@@ -119,7 +90,7 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
 
       // Interest match - check against career name, category, and skills
       const careerText = `${careerName} ${career.category || ''} ${career.stream || ''}`.toLowerCase();
-      const careerSkills = (career.coreSkills?.map(s => s.name) || career.skills_required || []).map(s => String(s).toLowerCase());
+      const careerSkills = (career.skills_required || []).map(s => String(s).toLowerCase());
       
       const matchingInterests = profile.interests.filter(interest => {
         const interestLower = interest.toLowerCase();
@@ -148,7 +119,7 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
       score += 10;
 
       // Skill gap analysis
-      const allSkills = career.coreSkills?.map(s => s.name) || career.skills_required || [];
+      const allSkills = career.skills_required || [];
       allSkills.forEach(skill => {
         const skillStr = String(skill);
         const hasSkill = profile.strengths.some(s => 
@@ -173,9 +144,9 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
         };
 
         const salaryProjection = {
-          entry: career.jobRoles?.entry?.salaryRange || { min: 300000, max: 500000 },
-          mid: career.jobRoles?.mid?.salaryRange || { min: 800000, max: 1500000 },
-          senior: career.jobRoles?.senior?.salaryRange || { min: 2000000, max: 4000000 }
+          entry: { min: 300000, max: 500000 },
+          mid: { min: 800000, max: 1500000 },
+          senior: { min: 2000000, max: 4000000 }
         };
 
         if (reason.length === 0) {
@@ -210,22 +181,18 @@ exports.getHighDemandCareers = async (req, res) => {
     const profile = await Profile.findOne({ user: req.user._id });
     
     const careers = await Career.find({ isHighDemand: true })
-      .populate('requiredStream')
-      .populate('requiredExams')
-      .populate('requiredDegrees')
-      .populate('coreSkills')
-      .populate('jobRoles.entry')
-      .populate('jobRoles.mid')
-      .populate('jobRoles.senior')
-      .sort({ demandGrowth: -1 });
+      .sort({ demandGrowth: -1 })
+      .lean();
 
     // Filter by user's education level and interests if profile exists
     let filteredCareers = careers;
     if (profile) {
       filteredCareers = careers.filter(career => {
+        const careerName = career.name || career.career_options?.[0] || '';
+        const careerCategory = career.category || career.stream || '';
         const matchesInterest = profile.interests.some(interest =>
-          career.name.toLowerCase().includes(interest.toLowerCase()) ||
-          career.category.toLowerCase().includes(interest.toLowerCase())
+          careerName.toLowerCase().includes(interest.toLowerCase()) ||
+          careerCategory.toLowerCase().includes(interest.toLowerCase())
         );
         return matchesInterest || true; // Show all if no match
       });

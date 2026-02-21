@@ -11,6 +11,9 @@ import CareerDetail from './pages/CareerDetail';
 import MyCareerPath from './pages/MyCareerPath';
 import HighDemandCourses from './pages/HighDemandCourses';
 import CommunityForum from './pages/CommunityForum';
+import Community from './pages/Community';
+import AskQuestion from './pages/AskQuestion';
+import QuestionDetail from './pages/QuestionDetail';
 import Profile from './pages/Profile';
 import PrivateRoute from './components/PrivateRoute';
 
@@ -41,6 +44,9 @@ function App() {
           <Route path="/my-career" element={<PrivateRoute><MyCareerPath /></PrivateRoute>} />
           <Route path="/high-demand" element={<PrivateRoute><HighDemandCourses /></PrivateRoute>} />
           <Route path="/forum" element={<PrivateRoute><CommunityForum /></PrivateRoute>} />
+          <Route path="/community" element={<PrivateRoute><Community /></PrivateRoute>} />
+          <Route path="/community/ask" element={<PrivateRoute><AskQuestion /></PrivateRoute>} />
+          <Route path="/community/question/:id" element={<PrivateRoute><QuestionDetail /></PrivateRoute>} />
           <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
         </Routes>
       </Router>

@@ -13,7 +13,7 @@ const Sidebar = () => {
     { path: '/explore', label: 'Explore Careers', icon: '🔍' },
     { path: '/my-career', label: 'My Career Path', icon: '🎯' },
     { path: '/high-demand', label: 'High-Demand Courses', icon: '📈' },
-    { path: '/forum', label: 'Community Forum', icon: '💬' },
+    { path: '/community', label: 'Community Forum', icon: '💬' },
     { path: '/profile', label: 'Profile', icon: '👤' },
   ];
 

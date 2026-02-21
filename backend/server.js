@@ -16,6 +16,7 @@ app.use(express.json());
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/careers', require('./routes/careerRoutes'));
 app.use('/api/forum', require('./routes/forumRoutes'));
+app.use('/api/community', require('./routes/communityRoutes'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'FutureFlow API is running' });
