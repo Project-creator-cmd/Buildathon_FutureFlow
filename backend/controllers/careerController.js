@@ -3,13 +3,15 @@ const Profile = require('../models/Profile');
 
 exports.getAllCareers = async (req, res) => {
   try {
-    const { category, search } = req.query;
+    const { stream, search } = req.query;
     let query = {};
 
-    if (category && category !== 'All') {
-      query.category = category;
+    // Filter by stream if provided
+    if (stream && stream !== 'All') {
+      query.stream = stream;
     }
 
+    // Fetch all careers
     const careers = await Career.find(query)
       .populate('requiredStream')
       .populate('requiredExams')
@@ -17,19 +19,29 @@ exports.getAllCareers = async (req, res) => {
       .populate('coreSkills')
       .populate('jobRoles.entry')
       .populate('jobRoles.mid')
-      .populate('jobRoles.senior');
+      .populate('jobRoles.senior')
+      .lean();
 
     let filteredCareers = careers;
+
+    // Apply search filter
     if (search) {
-      filteredCareers = careers.filter(career =>
-        career.name.toLowerCase().includes(search.toLowerCase()) ||
-        career.description?.toLowerCase().includes(search.toLowerCase())
-      );
+      filteredCareers = careers.filter(career => {
+        const searchLower = search.toLowerCase();
+        const careerName = career.name || career.career_options?.[0] || '';
+        const careerStream = career.stream || '';
+        const careerDesc = career.description || '';
+        
+        return careerName.toLowerCase().includes(searchLower) ||
+               careerStream.toLowerCase().includes(searchLower) ||
+               careerDesc.toLowerCase().includes(searchLower);
+      });
     }
 
     res.json(filteredCareers);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error fetching careers:', error);
+    res.status(500).json({ message: error.message, error: error.toString() });
   }
 };
 
@@ -51,7 +63,8 @@ exports.getCareerById = async (req, res) => {
       .populate({
         path: 'jobRoles.senior',
         populate: { path: 'requiredSkills' }
-      });
+      })
+      .lean();
 
     if (!career) {
       return res.status(404).json({ message: 'Career not found' });
@@ -59,6 +72,7 @@ exports.getCareerById = async (req, res) => {
 
     res.json(career);
   } catch (error) {
+    console.error('Error fetching career by ID:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -76,7 +90,11 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
       .populate('coreSkills')
       .populate('jobRoles.entry')
       .populate('jobRoles.mid')
-      .populate('jobRoles.senior');
+      .populate('jobRoles.senior')
+      .lean();
+
+    console.log(`Found ${careers.length} careers for personalization`);
+    console.log('Profile:', { marks: profile.tenthMarks, interests: profile.interests, strengths: profile.strengths });
 
     const recommendations = [];
 
@@ -86,47 +104,64 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
       let skillGaps = [];
       let improvements = [];
 
-      // Marks eligibility
-      if (profile.tenthMarks >= career.minMarks) {
-        score += 30;
+      const careerName = career.name || career.career_options?.[0] || 'Career';
+      const minMarks = career.minMarks || 50;
+
+      // Marks eligibility - more lenient
+      if (profile.tenthMarks >= minMarks) {
+        score += 25;
         reason.push(`Your marks (${profile.tenthMarks}%) meet the requirement`);
-      } else {
-        improvements.push(`Improve marks to ${career.minMarks}%`);
+      } else if (profile.tenthMarks >= minMarks - 10) {
+        score += 15;
+        reason.push(`Your marks are close to the requirement`);
+        improvements.push(`Aim for ${minMarks}% or higher`);
       }
 
-      // Interest match
-      const careerSkills = career.coreSkills.map(s => s.name.toLowerCase());
-      const matchingInterests = profile.interests.filter(interest => 
-        careerSkills.some(skill => skill.includes(interest.toLowerCase())) ||
-        career.name.toLowerCase().includes(interest.toLowerCase())
-      );
+      // Interest match - check against career name, category, and skills
+      const careerText = `${careerName} ${career.category || ''} ${career.stream || ''}`.toLowerCase();
+      const careerSkills = (career.coreSkills?.map(s => s.name) || career.skills_required || []).map(s => String(s).toLowerCase());
+      
+      const matchingInterests = profile.interests.filter(interest => {
+        const interestLower = interest.toLowerCase();
+        return careerText.includes(interestLower) || 
+               careerSkills.some(skill => skill.includes(interestLower));
+      });
       
       if (matchingInterests.length > 0) {
-        score += matchingInterests.length * 15;
+        score += matchingInterests.length * 20;
         reason.push(`Matches your interests: ${matchingInterests.join(', ')}`);
       }
 
       // Strength match
-      const matchingStrengths = profile.strengths.filter(strength => 
-        careerSkills.some(skill => skill.includes(strength.toLowerCase()))
-      );
+      const matchingStrengths = profile.strengths.filter(strength => {
+        const strengthLower = strength.toLowerCase();
+        return careerText.includes(strengthLower) || 
+               careerSkills.some(skill => skill.includes(strengthLower));
+      });
       
       if (matchingStrengths.length > 0) {
-        score += matchingStrengths.length * 20;
+        score += matchingStrengths.length * 25;
         reason.push(`Aligns with your strengths: ${matchingStrengths.join(', ')}`);
       }
 
+      // Give base score to all careers
+      score += 10;
+
       // Skill gap analysis
-      career.coreSkills.forEach(skill => {
+      const allSkills = career.coreSkills?.map(s => s.name) || career.skills_required || [];
+      allSkills.forEach(skill => {
+        const skillStr = String(skill);
         const hasSkill = profile.strengths.some(s => 
-          s.toLowerCase().includes(skill.name.toLowerCase())
+          s.toLowerCase().includes(skillStr.toLowerCase()) ||
+          skillStr.toLowerCase().includes(s.toLowerCase())
         );
         if (!hasSkill) {
-          skillGaps.push(skill.name);
+          skillGaps.push(skillStr);
         }
       });
 
-      if (score >= 40) {
+      // Lower threshold to show more careers
+      if (score >= 10) {
         const timeline = {
           year1: 'Complete Intermediate/Diploma',
           year2: 'Prepare for entrance exams',
@@ -138,16 +173,20 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
         };
 
         const salaryProjection = {
-          entry: career.jobRoles.entry?.salaryRange || { min: 300000, max: 500000 },
-          mid: career.jobRoles.mid?.salaryRange || { min: 800000, max: 1500000 },
-          senior: career.jobRoles.senior?.salaryRange || { min: 2000000, max: 4000000 }
+          entry: career.jobRoles?.entry?.salaryRange || { min: 300000, max: 500000 },
+          mid: career.jobRoles?.mid?.salaryRange || { min: 800000, max: 1500000 },
+          senior: career.jobRoles?.senior?.salaryRange || { min: 2000000, max: 4000000 }
         };
+
+        if (reason.length === 0) {
+          reason.push('This career path is available based on your profile');
+        }
 
         recommendations.push({
           career,
           suitabilityScore: Math.min(score, 100),
           reason: reason.join('. '),
-          skillGaps,
+          skillGaps: skillGaps.slice(0, 5),
           improvements,
           timeline,
           salaryProjection
@@ -156,9 +195,13 @@ exports.generatePersonalizedRoadmap = async (req, res) => {
     }
 
     recommendations.sort((a, b) => b.suitabilityScore - a.suitabilityScore);
-    res.json(recommendations.slice(0, 5));
+    const topRecommendations = recommendations.slice(0, 5);
+    
+    console.log(`Returning ${topRecommendations.length} recommendations`);
+    res.json(topRecommendations);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error generating personalized roadmap:', error);
+    res.status(500).json({ message: error.message, error: error.toString() });
   }
 };
 

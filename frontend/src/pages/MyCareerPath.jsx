@@ -11,11 +11,13 @@ const MyCareerPath = () => {
     setLoading(true);
     try {
       const { data } = await axios.post('/api/careers/personalized');
+      console.log('Received roadmaps:', data);
       setRoadmaps(data);
       setGenerated(true);
       setLoading(false);
     } catch (error) {
       console.error('Error generating roadmap:', error);
+      alert(error.response?.data?.message || 'Failed to generate roadmap. Please try again.');
       setLoading(false);
     }
   };
@@ -67,27 +69,34 @@ const MyCareerPath = () => {
 
         {roadmaps.length === 0 ? (
           <div className="bg-white rounded-xl shadow-md p-8 text-center">
-            <p className="text-gray-600">No suitable careers found. Try updating your profile.</p>
+            <p className="text-gray-600 mb-4">No suitable careers found. Try updating your profile with more interests and strengths.</p>
+            <button onClick={() => window.location.href = '/profile'} className="btn-primary">
+              Update Profile
+            </button>
           </div>
         ) : (
           <div className="space-y-6">
-            {roadmaps.map((roadmap, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-md p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-xl">
-                      #{index + 1}
+            {roadmaps.map((roadmap, index) => {
+              const careerName = roadmap.career.name || roadmap.career.career_options?.[0] || 'Career Path';
+              const careerCategory = roadmap.career.category || roadmap.career.stream || 'N/A';
+              
+              return (
+                <div key={index} className="bg-white rounded-xl shadow-md p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-xl">
+                        #{index + 1}
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold">{careerName}</h2>
+                        <span className="text-sm text-gray-500">{careerCategory}</span>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="text-2xl font-bold">{roadmap.career.name}</h2>
-                      <span className="text-sm text-gray-500">{roadmap.career.category}</span>
+                    <div className="text-right">
+                      <div className="text-3xl font-bold text-green-600">{Math.round(roadmap.suitabilityScore)}%</div>
+                      <div className="text-sm text-gray-500">Match Score</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-green-600">{roadmap.suitabilityScore}%</div>
-                    <div className="text-sm text-gray-500">Match Score</div>
-                  </div>
-                </div>
 
                 <div className="bg-blue-50 p-4 rounded-lg mb-4">
                   <h3 className="font-semibold text-blue-900 mb-2">Why This Career?</h3>
@@ -156,7 +165,8 @@ const MyCareerPath = () => {
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

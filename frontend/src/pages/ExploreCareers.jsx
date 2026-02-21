@@ -7,10 +7,11 @@ const ExploreCareers = () => {
   const [careers, setCareers] = useState([]);
   const [filteredCareers, setFilteredCareers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedStream, setSelectedStream] = useState('All');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const categories = ['All', 'Engineering & Technology', 'Medical & Healthcare', 'Commerce & Finance', 'Management', 'Design & Creative', 'Government & Civil Services', 'Law', 'Pure Sciences', 'Emerging Fields'];
+  const streams = ['All', 'Science (PCM)', 'Science (PCB)', 'Commerce', 'Arts/Humanities', 'Vocational', 'Diploma'];
 
   useEffect(() => {
     fetchCareers();
@@ -18,16 +19,20 @@ const ExploreCareers = () => {
 
   useEffect(() => {
     filterCareers();
-  }, [searchTerm, selectedCategory, careers]);
+  }, [searchTerm, selectedStream, careers]);
 
   const fetchCareers = async () => {
     try {
+      setLoading(true);
+      setError(null);
       const { data } = await axios.get('/api/careers');
+      console.log('Fetched careers:', data);
       setCareers(data);
       setFilteredCareers(data);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching careers:', error);
+      setError(error.response?.data?.message || 'Failed to fetch careers');
       setLoading(false);
     }
   };
@@ -35,15 +40,17 @@ const ExploreCareers = () => {
   const filterCareers = () => {
     let filtered = careers;
 
-    if (selectedCategory !== 'All') {
-      filtered = filtered.filter(c => c.category === selectedCategory);
+    if (selectedStream !== 'All') {
+      filtered = filtered.filter(c => c.stream === selectedStream);
     }
 
     if (searchTerm) {
-      filtered = filtered.filter(c =>
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.description?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      filtered = filtered.filter(c => {
+        const careerName = c.name || c.career_options?.[0] || '';
+        const careerStream = c.stream || '';
+        return careerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+               careerStream.toLowerCase().includes(searchTerm.toLowerCase());
+      });
     }
 
     setFilteredCareers(filtered);
@@ -52,8 +59,22 @@ const ExploreCareers = () => {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="flex flex-col items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Loading careers...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button onClick={fetchCareers} className="btn-primary">
+            Retry
+          </button>
         </div>
       </DashboardLayout>
     );
@@ -63,8 +84,8 @@ const ExploreCareers = () => {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">Explore Careers</h2>
-          <p className="text-gray-600">Discover complete roadmaps for 20+ career paths</p>
+          <h2 className="text-3xl font-bold text-gray-800 mb-2">Explore Career Paths</h2>
+          <p className="text-gray-600">Discover complete roadmaps from 10th class to your dream career</p>
         </div>
 
         {/* Search and Filter */}
@@ -78,70 +99,80 @@ const ExploreCareers = () => {
               className="input-field"
             />
             <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              value={selectedStream}
+              onChange={(e) => setSelectedStream(e.target.value)}
               className="input-field"
             >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
+              {streams.map(stream => (
+                <option key={stream} value={stream}>{stream}</option>
               ))}
             </select>
           </div>
-          <p className="text-sm text-gray-600">Showing {filteredCareers.length} careers</p>
+          <p className="text-sm text-gray-600">
+            Showing <span className="font-semibold text-blue-600">{filteredCareers.length}</span> of <span className="font-semibold">{careers.length}</span> careers
+          </p>
         </div>
 
         {/* Career Cards */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCareers.map(career => (
-            <Link
-              key={career._id}
-              to={`/career/${career._id}`}
-              className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1 overflow-hidden"
-            >
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-xl font-bold text-gray-800 flex-1">{career.name}</h3>
-                  <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs rounded-full whitespace-nowrap ml-2">
-                    {career.category}
-                  </span>
-                </div>
-                
-                <p className="text-gray-600 text-sm mb-4 line-clamp-2">{career.description}</p>
-                
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center text-gray-700">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                    {career.requiredStream?.name}
+          {filteredCareers.map(career => {
+            const careerTitle = career.name || career.career_options?.[0] || 'Career Path';
+            const careerStream = career.stream || career.requiredStream?.name || 'N/A';
+            const nextStep = career.degree_options?.[0] || career.requiredDegrees?.[0]?.name || 'View Details';
+            
+            return (
+              <Link
+                key={career._id}
+                to={`/career/${career._id}`}
+                className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1 overflow-hidden"
+              >
+                <div className="p-6">
+                  <div className="mb-4">
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">{careerTitle}</h3>
+                    <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                      {careerStream}
+                    </span>
                   </div>
                   
-                  {career.jobRoles?.entry && (
-                    <div className="flex items-center text-green-600 font-medium">
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-start">
+                      <svg className="w-5 h-5 mr-2 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                       </svg>
-                      ₹{(career.jobRoles.entry.salaryRange.min / 100000).toFixed(1)}L - ₹{(career.jobRoles.entry.salaryRange.max / 100000).toFixed(1)}L
+                      <div>
+                        <p className="font-medium text-gray-700">Next Step:</p>
+                        <p className="text-gray-600">{nextStep}</p>
+                      </div>
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <span className="text-blue-600 font-medium text-sm flex items-center">
-                    View Complete Roadmap 
-                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </span>
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <span className="text-blue-600 font-medium text-sm flex items-center">
+                      View Complete Roadmap 
+                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
 
-        {filteredCareers.length === 0 && (
+        {filteredCareers.length === 0 && careers.length > 0 && (
           <div className="text-center py-12 bg-white rounded-xl shadow-md">
-            <p className="text-gray-500 text-lg">No careers found matching your criteria</p>
+            <p className="text-gray-500 text-lg">No careers found matching your search</p>
+            <button onClick={() => { setSearchTerm(''); setSelectedStream('All'); }} className="btn-secondary mt-4">
+              Clear Filters
+            </button>
+          </div>
+        )}
+
+        {careers.length === 0 && !loading && (
+          <div className="text-center py-12 bg-white rounded-xl shadow-md">
+            <p className="text-gray-500 text-lg mb-4">No careers available in the database</p>
+            <p className="text-gray-400 text-sm">Please run the seed script to populate data</p>
           </div>
         )}
       </div>
